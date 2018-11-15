@@ -1,0 +1,46 @@
+# This is a sample build configuration for Java (Maven).
+# # Only use spaces to indent your .yml configuration.
+# # -----
+# # You can specify a custom docker image from Docker Hub as your build environment.
+image: sivakumarkatam/maven:v6
+
+pipelines:
+  branches:
+   master:
+     - step:
+         name: Bild
+         trigger: manual  # uncomment to have a manual step	 
+         script:
+           - ls -lrt
+           - mvn clean install
+           - ls -l target/
+           - echo "Sonar Scanning started"
+           - sh /sonar-scanner-3.2.0.1227-linux/bin/sonar-scanner -e -Dsonar.host.url=http://sonar_url:9000 -Dsonar.projectName=Pro_Name -Dsonar.projectVersion=$BITBUCKET_BUILD_NUMBER -Dsonar.login=siva -Dsonar.password=$password -Dsonar.projectKey=com.Project -Dsonar.sources=src/  -Dsonar.sourceEncoding=UTF-8 -Dsonar.language=java -Dsonar.java.binaries=target/classes
+           - echo "Dependency check started"
+           - cd /tmp/dependency-check/bin/
+           - ./dependency-check.sh --project "Pro_name" --scan /opt/atlassian/pipelines/agent/build/ -f HTML -o /opt/atlassian/pipelines/agent/build/ --disableBundleAudit --disableRubygems --disablePyPkg --disableAssembly --enableExperimental --disableComposer
+           - curl -F file=@/opt/atlassian/pipelines/agent/build/dependency-check-report.html -F "initial_comment=Summary report for Dependency check for Project-$BITBUCKET_BUILD_NUMBER" -F channels=$slack_channel -F token=$slack_token https://Slack_url/api/files.upload
+           - cd /opt/atlassian/pipelines/agent/build/
+           - pwd
+           - ls -lrt
+           - zip -r app.zip *
+           - ls -lrt
+           - aws s3 cp ap.zip s3://bucket/folder/$BITBUCKET_BUILD_NUMBER/
+           
+         artifacts:
+           - target/**
+     - step:
+        # set AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and AWS_DEFAULT_REGION as environment variables
+        name: Deploy to App
+        deployment: test   # set to test, staging or production
+        trigger: manual  # uncomment to have a manual step
+        image: atlassian/pipelines-awscli
+        script:
+          - echo "completed"
+          - DEPLOYMENT_BUCKET=bucket
+          - APPLICATION_NAME=codedeploy_Application_name
+          - DEPLOYMENT_GROUP=codedeploy_deployment_group
+          - AutoScallingGroupName=ASG_name
+          - ELBNAME=Elb_name
+          - ls -lrt
+          - aws deploy create-deployment --application-name $APPLICATION_NAME --s3-location bucket=Bucket,key=folder/$BITBUCKET_BUILD_NUMBER/app.zip,bundleType=zip --deployment-group-name $DEPLOYMENT_GROUP --region region
